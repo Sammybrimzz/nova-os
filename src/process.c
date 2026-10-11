@@ -82,9 +82,19 @@ process_t *process_create(uint32_t entry_point)
         return 0;
     }
 
+    void *kernel_stack = kmalloc(PROCESS_STACK_SIZE);
+
+    if (kernel_stack == 0)
+    {
+        kfree(stack);
+        kfree(process);
+        return 0;
+    }
+
     process->pid = next_pid++;
     process->state = PROCESS_READY;
     process->stack = (uint32_t)stack;
+    process->kernel_stack = (uint32_t)kernel_stack;
     process->instruction_pointer = entry_point;
     process->next = 0;
 
@@ -163,6 +173,11 @@ void process_destroy(process_t *process)
             if (process->stack != 0)
             {
                 kfree((void *)process->stack);
+            }
+
+            if (process->kernel_stack != 0)
+            {
+                kfree((void *)process->kernel_stack);
             }
 
             kfree(process);

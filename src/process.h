@@ -94,6 +94,12 @@ typedef struct process
      */
     struct process *next;
 
+    /*
+     * Dedicated kernel stack for future Ring 3 support.
+     * Not used for context switching yet.
+     */
+    uint32_t kernel_stack;
+
 } process_t;
 
 

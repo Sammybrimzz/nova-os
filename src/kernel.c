@@ -1,9 +1,15 @@
 #include "process.h"
+#include "tss.h"
+#define TSS_KERNEL_STACK_SIZE 4096
+
+static uint8_t tss_kernel_stack[TSS_KERNEL_STACK_SIZE]
+    __attribute__((aligned(16)));
+
 
 extern void gdt_init(void);
 extern void idt_init(void);
 extern void pic_remap(void);
-
+extern void enter_user_mode(void);
 extern void timer_init(unsigned int frequency);
 
 extern void memory_init(void);
@@ -37,16 +43,35 @@ extern void screen_print(const char *text);
 void kernel_main(void)
 {
     gdt_init();
+
+/*
+ * Temporary kernel stack pointer for TSS testing.
+ * Do not enter Ring 3 until per-process kernel
+ * stack handling is implemented.
+ */
+
+uint32_t kernel_stack =
+    (uint32_t)(tss_kernel_stack + TSS_KERNEL_STACK_SIZE);
+
+tss_init(kernel_stack);
     pic_remap();
     idt_init();
     timer_init(100);
+memory_init();
+heap_init();
 
-    memory_init();
-    heap_init();
+/*
+ * First Ring 3 experiment.
+ * This function should not return.
+ */
+enter_user_mode();
 
-    process_init();
-    scheduler_init();
-
+/*
+ * The scheduler code below is temporarily
+ * unreachable during this isolated test.
+ */
+process_init();
+scheduler_init();
     /*
      * Create Process 1.
      */

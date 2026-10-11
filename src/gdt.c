@@ -1,4 +1,3 @@
-#include <stdint.h>
 
 extern void gdt_flush(void);
 

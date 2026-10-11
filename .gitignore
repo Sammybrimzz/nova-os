@@ -1,4 +1,23 @@
-
+# Compiled object files and kernel binaries
 build/
-nova.iso
 *.o
+nova
+bytes
+hex
+memory
+memory_layout
+registers
+sizes
+syscall
+
+# Generated bootable ISO
+nova.iso
+iso/boot/kernel.bin
+
+# Editor and OS files
+.vscode/
+*.swp
+*~
+
+# Temporary source backups
+src/*.before-kernel-stack
