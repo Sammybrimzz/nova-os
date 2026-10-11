@@ -1,0 +1,4 @@
+
+build/
+nova.iso
+*.o
