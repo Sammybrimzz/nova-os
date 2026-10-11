@@ -1,3 +1,4 @@
+
 #include <stdint.h>
 
 /*
@@ -6,23 +7,23 @@
 #define FRAME_SIZE 4096
 
 /*
- * For this first allocator we'll manage
- * the first 16 MiB of physical memory.
+ * Manage the first 16 MiB of physical memory.
  */
 #define MEMORY_SIZE (16 * 1024 * 1024)
-
-/*
- * Number of 4 KiB frames in 16 MiB.
- */
 #define FRAME_COUNT (MEMORY_SIZE / FRAME_SIZE)
+#define BITMAP_SIZE (FRAME_COUNT / 8)
 
 /*
- * One bit represents one frame.
- *
- * 0 = free
- * 1 = used
+ * The heap occupies physical memory from 2 MiB to 3 MiB.
  */
-#define BITMAP_SIZE (FRAME_COUNT / 8)
+#define HEAP_START 0x00200000
+#define HEAP_END   0x00300000
+
+/*
+ * Defined by linker.ld.
+ * This symbol marks the end of the kernel's linked sections.
+ */
+extern uint8_t _kernel_end;
 
 static uint8_t frame_bitmap[BITMAP_SIZE];
 
@@ -52,9 +53,33 @@ static int frame_is_used(uint32_t frame)
 }
 
 /*
- * Initialize the frame allocator.
+ * Reserve every frame touched by [start, end).
  *
- * Initially every frame is free.
+ * Round the beginning down and the end up so that
+ * partially occupied frames are reserved too.
+ */
+static void reserve_region(uint32_t start, uint32_t end)
+{
+    uint32_t first_frame = start / FRAME_SIZE;
+    uint32_t end_frame =
+        (end / FRAME_SIZE) + ((end % FRAME_SIZE) != 0);
+
+    if (first_frame > FRAME_COUNT)
+        first_frame = FRAME_COUNT;
+
+    if (end_frame > FRAME_COUNT)
+        end_frame = FRAME_COUNT;
+
+    for (uint32_t frame = first_frame;
+         frame < end_frame;
+         frame++)
+    {
+        frame_set(frame);
+    }
+}
+
+/*
+ * Initialize the physical frame allocator.
  */
 void memory_init(void)
 {
@@ -64,28 +89,21 @@ void memory_init(void)
     }
 
     /*
-     * Reserve the first 1 MiB.
-     *
-     * Our kernel is loaded around 1 MiB,
-     * and we don't want the allocator
-     * handing this memory out.
+     * Reserve low memory and the complete kernel,
+     * including its bitmap and other BSS variables.
      */
-    uint32_t reserved_frames = (1024 * 1024) / FRAME_SIZE;
+    reserve_region(0, (uint32_t)&_kernel_end);
 
-    for (uint32_t frame = 0;
-         frame < reserved_frames;
-         frame++)
-    {
-        frame_set(frame);
-    }
+    /*
+     * Reserve the fixed heap independently.
+     */
+    reserve_region(HEAP_START, HEAP_END);
 }
 
 /*
- * Find and allocate one free frame.
+ * Allocate one free physical frame.
  *
- * Returns the physical address of the frame.
- *
- * Returns 0 if no frame is available.
+ * Returns its physical address, or 0 if exhausted.
  */
 uint32_t memory_alloc_frame(void)
 {
@@ -96,7 +114,6 @@ uint32_t memory_alloc_frame(void)
         if (!frame_is_used(frame))
         {
             frame_set(frame);
-
             return frame * FRAME_SIZE;
         }
     }
@@ -109,20 +126,43 @@ uint32_t memory_alloc_frame(void)
  */
 void memory_free_frame(uint32_t address)
 {
+    /*
+     * Reject unaligned addresses and address zero.
+     */
+    if (address == 0 || address % FRAME_SIZE != 0)
+        return;
+
     uint32_t frame = address / FRAME_SIZE;
 
     if (frame < FRAME_COUNT)
     {
+        /*
+         * Never release memory reserved for the kernel
+         * or the fixed heap.
+         */
+        uint32_t kernel_end =
+            (uint32_t)&_kernel_end;
+
+        uint32_t aligned_kernel_end =
+            (kernel_end / FRAME_SIZE) * FRAME_SIZE;
+
+        if (address < 0x00100000)
+            return;
+
+        if (address < aligned_kernel_end)
+            return;
+
+        if (address >= HEAP_START && address < HEAP_END)
+            return;
+
         frame_clear(frame);
     }
 }
 
 /*
- * Return the number of frames managed
- * by this allocator.
+ * Return the number of managed physical frames.
  */
 uint32_t memory_total_frames(void)
 {
     return FRAME_COUNT;
 }
-
